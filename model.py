@@ -30,10 +30,10 @@ class cyclegan(object):
         else:
             self.criterionGAN = sce_criterion
 
-        OPTIONS = namedtuple('OPTIONS', 'batch_size image_size \
-                              gf_dim df_dim output_c_dim is_training')
-        self.options = OPTIONS._make((args.batch_size, args.fine_size,
-                                      args.ngf, args.ndf, args.output_nc,
+        OPTIONS = namedtuple('OPTIONS', 'batch_size image_size noise_stdv\
+                              gf_dim df_dim output_c_dim input_c_dim is_training')
+        self.options = OPTIONS._make((args.batch_size, args.fine_size, args.noise_stdv,
+                                      args.ngf, args.ndf, args.output_nc, args.input_nc,
                                       args.phase == 'train'))
 
         self._build_model()
@@ -50,8 +50,8 @@ class cyclegan(object):
         self.real_B = self.real_data[:, :, :, self.input_c_dim:self.input_c_dim + self.output_c_dim]
 
         self.fake_B = self.generator(self.real_A, self.options, False, name="generatorA2B")
-        self.fake_A_ = self.generator(self.fake_B, self.options, False, name="generatorB2A")
-        self.fake_A = self.generator(self.real_B, self.options, True, name="generatorB2A")
+        self.fake_A_ = self.generator(self.fake_B, self.options, False, name="generatorB2A", a2b=False)
+        self.fake_A = self.generator(self.real_B, self.options, True, name="generatorB2A", a2b=False)
         self.fake_B_ = self.generator(self.fake_A, self.options, True, name="generatorA2B")
 
         self.DB_fake = self.discriminator(self.fake_B, self.options, reuse=False, name="discriminatorB")
@@ -141,15 +141,28 @@ class cyclegan(object):
         for epoch in range(args.epoch):
             dataA = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainA'))
             dataB = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainB'))
+
+            dataDisc = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainDisc'))
+            dataHead = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainHead'))
+
             np.random.shuffle(dataA)
             np.random.shuffle(dataB)
-            batch_idxs = min(min(len(dataA), len(dataB)), args.train_size) // self.batch_size
+
+            np.random.shuffle(dataDisc)
+            np.random.shuffle(dataHead)
+
+            min_data_size = min(min(min(dataA, dataB), dataDisc), dataHead)
+            batch_idxs = min(min_data_size, args.train_size) // self.batch_size
             lr = args.lr if epoch < args.epoch_step else args.lr*(args.epoch-epoch)/(args.epoch-args.epoch_step)
 
             for idx in range(0, batch_idxs):
                 batch_files = list(zip(dataA[idx * self.batch_size:(idx + 1) * self.batch_size],
-                                       dataB[idx * self.batch_size:(idx + 1) * self.batch_size]))
-                batch_images = [load_train_data(batch_file, args.load_size, args.fine_size) for batch_file in batch_files]
+                                       dataB[idx * self.batch_size:(idx + 1) * self.batch_size],
+                                       dataDisc[idx * self.batch_size:(idx + 1) * self.batch_size],
+                                       dataHead[idx * self.batch_size:(idx + 1) * self.batch_size]))
+
+                batch_images = [load_train_data(batch_file, args.load_size, args.fine_size)
+                                for batch_file in batch_files]
                 batch_images = np.array(batch_images).astype(np.float32)
 
                 # Update G network and record fake outputs
@@ -209,7 +222,15 @@ class cyclegan(object):
         dataB = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/testB'))
         np.random.shuffle(dataA)
         np.random.shuffle(dataB)
-        batch_files = list(zip(dataA[:self.batch_size], dataB[:self.batch_size]))
+
+        dataDisc = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainDisc'))
+        dataHead = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainHead'))
+
+        np.random.shuffle(dataDisc)
+        np.random.shuffle(dataHead)
+
+        batch_files = list(zip(dataA[:self.batch_size], dataB[:self.batch_size], dataDisc[:self.batch_size],
+                               dataHead[:self.batch_size]))
         sample_images = [load_train_data(batch_file, is_testing=True) for batch_file in batch_files]
         sample_images = np.array(sample_images).astype(np.float32)
 
@@ -217,7 +238,7 @@ class cyclegan(object):
             [self.fake_A, self.fake_B],
             feed_dict={self.real_data: sample_images}
         )
-        save_images(fake_A, [self.batch_size, 1],
+        save_images(fake_A[:-2], [self.batch_size, 1],
                     './{}/A_{:02d}_{:04d}.jpg'.format(sample_dir, epoch, idx))
         save_images(fake_B, [self.batch_size, 1],
                     './{}/B_{:02d}_{:04d}.jpg'.format(sample_dir, epoch, idx))

@@ -3,6 +3,12 @@ import tensorflow as tf
 from ops import *
 from utils import *
 
+def add_gaussian_noise(image, stdv = 0.2):
+    with tf.name_scope('Add_gaussian_noise'):
+        noise = tf.random_normal(shape=tf.shape(image), mean=0.0, stddev=stdv, dtype=tf.float32)
+        noise_img = image + noise
+        # noise_img = tf.clip_by_value(noise_img, 0.0, 1.0)
+    return noise_img
 
 def discriminator(image, options, reuse=False, name="discriminator"):
 
@@ -26,7 +32,7 @@ def discriminator(image, options, reuse=False, name="discriminator"):
         return h4
 
 
-def generator_unet(image, options, reuse=False, name="generator"):
+def generator_unet(image, options, reuse=False, name="generator", a2b=True):
 
     dropout_rate = 0.5 if options.is_training else 1.0
     with tf.variable_scope(name):
@@ -52,6 +58,7 @@ def generator_unet(image, options, reuse=False, name="generator"):
         e7 = instance_norm(conv2d(lrelu(e6), options.gf_dim*8, name='g_e7_conv'), 'g_bn_e7')
         # e7 is (2 x 2 x self.gf_dim*8)
         e8 = instance_norm(conv2d(lrelu(e7), options.gf_dim*8, name='g_e8_conv'), 'g_bn_e8')
+        e8 = add_gaussian_noise(e8, stdv=options.noise_stdv)
         # e8 is (1 x 1 x self.gf_dim*8)
 
         d1 = deconv2d(tf.nn.relu(e8), options.gf_dim*8, name='g_d1')
@@ -78,14 +85,19 @@ def generator_unet(image, options, reuse=False, name="generator"):
         # d5 is (32 x 32 x self.gf_dim*4*2)
 
         d6 = deconv2d(tf.nn.relu(d5), options.gf_dim*2, name='g_d6')
-        d6 = tf.concat([instance_norm(d6, 'g_bn_d6'), e2], 3)
-        # d6 is (64 x 64 x self.gf_dim*2*2)
+        d6 = instance_norm(d6, 'g_bn_d6')
+        # d6 = tf.concat([instance_norm(d6, 'g_bn_d6'), e2], 3)
+        # d6 is (64 x 64 x self.gf_dim*2)
 
         d7 = deconv2d(tf.nn.relu(d6), options.gf_dim, name='g_d7')
-        d7 = tf.concat([instance_norm(d7, 'g_bn_d7'), e1], 3)
-        # d7 is (128 x 128 x self.gf_dim*1*2)
+        d7 = instance_norm(d7, 'g_bn_d7')
+        # d7 = tf.concat([instance_norm(d7, 'g_bn_d7'), e1], 3)
+        # d7 is (128 x 128 x self.gf_dim*1)
 
-        d8 = deconv2d(tf.nn.relu(d7), options.output_c_dim, name='g_d8')
+        if a2b:
+            d8 = deconv2d(tf.nn.relu(d7), options.output_c_dim, name='g_d8')
+        else:
+            d8 = deconv2d(tf.nn.relu(d7), options.input_c_dim, name='g_d8')
         # d8 is (256 x 256 x output_c_dim)
 
         return tf.nn.tanh(d8)

@@ -14,6 +14,7 @@ parser.add_argument('--load_size', dest='load_size', type=int, default=286, help
 parser.add_argument('--fine_size', dest='fine_size', type=int, default=256, help='then crop to this size')
 parser.add_argument('--ngf', dest='ngf', type=int, default=64, help='# of gen filters in first conv layer')
 parser.add_argument('--ndf', dest='ndf', type=int, default=64, help='# of discri filters in first conv layer')
+parser.add_argument('--noise_stdv', dest='noise_stdv', type=float, default=0.2, help='Gaussian noise stdv in UNET decoder')
 parser.add_argument('--input_nc', dest='input_nc', type=int, default=3, help='# of input image channels')
 parser.add_argument('--output_nc', dest='output_nc', type=int, default=3, help='# of output image channels')
 parser.add_argument('--lr', dest='lr', type=float, default=0.0002, help='initial learning rate for adam')

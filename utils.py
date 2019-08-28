@@ -51,6 +51,9 @@ def load_test_data(image_path, fine_size=256):
 def load_train_data(image_path, load_size=286, fine_size=256, is_testing=False):
     img_A = imread(image_path[0])
     img_B = imread(image_path[1])
+    image_disc = imread(image_path[2], is_grayscale=True)
+    image_head = imread(image_path[3], is_grayscale=True)
+
     if not is_testing:
         img_A = scipy.misc.imresize(img_A, [load_size, load_size])
         img_B = scipy.misc.imresize(img_B, [load_size, load_size])
@@ -66,10 +69,18 @@ def load_train_data(image_path, load_size=286, fine_size=256, is_testing=False):
         img_A = scipy.misc.imresize(img_A, [fine_size, fine_size])
         img_B = scipy.misc.imresize(img_B, [fine_size, fine_size])
 
+
     img_A = img_A/127.5 - 1.
     img_B = img_B/127.5 - 1.
 
-    img_AB = np.concatenate((img_A, img_B), axis=2)
+    image_disc = scipy.misc.imresize(image_disc, [fine_size, fine_size])
+    image_head = scipy.misc.imresize(image_head, [fine_size, fine_size])
+    image_disc = image_disc / 127.5 - 1.
+    image_head = image_head / 127.5 - 1.
+    image_disc = np.expand_dims(image_disc, axis=-1)
+    image_head = np.expand_dims(image_head, axis=-1)
+
+    img_AB = np.concatenate((img_A, image_disc, image_head, img_B), axis=2)
     # img_AB shape: (fine_size, fine_size, input_c_dim + output_c_dim)
     return img_AB
 
