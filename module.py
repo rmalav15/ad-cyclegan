@@ -1,7 +1,7 @@
 from __future__ import division
-import tensorflow as tf
+
 from ops import *
-from utils import *
+
 
 def add_gaussian_noise(image, stdv = 0.2):
     with tf.name_scope('Add_gaussian_noise'):
@@ -158,3 +158,7 @@ def mae_criterion(in_, target):
 
 def sce_criterion(logits, labels):
     return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
+
+
+def perceptual_criterion(in_, target):
+    return None

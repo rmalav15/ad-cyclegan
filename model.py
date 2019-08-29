@@ -1,10 +1,9 @@
 from __future__ import division
+
 import os
 import time
-from glob import glob
-import tensorflow as tf
-import numpy as np
 from collections import namedtuple
+from glob import glob
 
 from module import *
 from utils import *
@@ -19,6 +18,9 @@ class cyclegan(object):
         self.output_c_dim = args.output_nc
         self.L1_lambda = args.L1_lambda
         self.dataset_dir = args.dataset_dir
+
+        if self.dataset_dir.endswith("/"):
+            self.dataset_dir = self.dataset_dir[:-1]
 
         self.discriminator = discriminator
         if args.use_resnet:
@@ -110,7 +112,7 @@ class cyclegan(object):
                                      [None, self.image_size, self.image_size,
                                       self.output_c_dim], name='test_B')
         self.testB = self.generator(self.test_A, self.options, True, name="generatorA2B")
-        self.testA = self.generator(self.test_B, self.options, True, name="generatorB2A")
+        self.testA = self.generator(self.test_B, self.options, True, name="generatorB2A", a2b=False)
 
         t_vars = tf.trainable_variables()
         self.d_vars = [var for var in t_vars if 'discriminator' in var.name]
@@ -139,11 +141,10 @@ class cyclegan(object):
                 print(" [!] Load failed...")
 
         for epoch in range(args.epoch):
-            dataA = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainA'))
-            dataB = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainB'))
-
-            dataDisc = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainDisc'))
-            dataHead = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainHead'))
+            dataA = glob('{}/*.*'.format(self.dataset_dir + '/trainA'))
+            dataB = glob('{}/*.*'.format(self.dataset_dir + '/trainB'))
+            dataDisc = glob('{}/*.*'.format(self.dataset_dir + '/trainDisc'))
+            dataHead = glob('{}/*.*'.format(self.dataset_dir + '/trainHead'))
 
             np.random.shuffle(dataA)
             np.random.shuffle(dataB)
@@ -151,7 +152,7 @@ class cyclegan(object):
             np.random.shuffle(dataDisc)
             np.random.shuffle(dataHead)
 
-            min_data_size = min(min(min(dataA, dataB), dataDisc), dataHead)
+            min_data_size = min(min(min(len(dataA), len(dataB)), len(dataDisc)), len(dataHead))
             batch_idxs = min(min_data_size, args.train_size) // self.batch_size
             lr = args.lr if epoch < args.epoch_step else args.lr*(args.epoch-epoch)/(args.epoch-args.epoch_step)
 
@@ -193,7 +194,7 @@ class cyclegan(object):
 
     def save(self, checkpoint_dir, step):
         model_name = "cyclegan.model"
-        model_dir = "%s_%s" % (self.dataset_dir, self.image_size)
+        model_dir = "%s_%s" % (self.dataset_dir.split("/")[-1], self.image_size)
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
 
         if not os.path.exists(checkpoint_dir):
@@ -206,7 +207,7 @@ class cyclegan(object):
     def load(self, checkpoint_dir):
         print(" [*] Reading checkpoint...")
 
-        model_dir = "%s_%s" % (self.dataset_dir, self.image_size)
+        model_dir = "%s_%s" % (self.dataset_dir.split("/")[-1], self.image_size)
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
 
         ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
@@ -218,14 +219,13 @@ class cyclegan(object):
             return False
 
     def sample_model(self, sample_dir, epoch, idx):
-        dataA = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/testA'))
-        dataB = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/testB'))
+        dataA = glob('{}/*.*'.format(self.dataset_dir + '/trainA'))
+        dataB = glob('{}/*.*'.format(self.dataset_dir + '/trainB'))
+        dataDisc = glob('{}/*.*'.format(self.dataset_dir + '/trainDisc'))
+        dataHead = glob('{}/*.*'.format(self.dataset_dir + '/trainHead'))
+
         np.random.shuffle(dataA)
         np.random.shuffle(dataB)
-
-        dataDisc = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainDisc'))
-        dataHead = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/trainHead'))
-
         np.random.shuffle(dataDisc)
         np.random.shuffle(dataHead)
 
@@ -238,8 +238,12 @@ class cyclegan(object):
             [self.fake_A, self.fake_B],
             feed_dict={self.real_data: sample_images}
         )
-        save_images(fake_A[:-2], [self.batch_size, 1],
+        save_images(fake_A[:, :, :, :-2], [self.batch_size, 1],
                     './{}/A_{:02d}_{:04d}.jpg'.format(sample_dir, epoch, idx))
+        # save_images(fake_A[:, :, :, :-2], [self.batch_size, 1],
+        #             './{}/A_{:02d}_{:04d}.jpg'.format(sample_dir, epoch, idx))
+        # save_images(fake_A[:, :, :, :-2], [self.batch_size, 1],
+        #             './{}/A_{:02d}_{:04d}.jpg'.format(sample_dir, epoch, idx))
         save_images(fake_B, [self.batch_size, 1],
                     './{}/B_{:02d}_{:04d}.jpg'.format(sample_dir, epoch, idx))
 
