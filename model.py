@@ -51,23 +51,36 @@ class cyclegan(object):
         self.real_A = self.real_data[:, :, :, :self.input_c_dim]
         self.real_B = self.real_data[:, :, :, self.input_c_dim:self.input_c_dim + self.output_c_dim]
 
-        self.fake_B = self.generator(self.real_A, self.options, False, name="generatorA2B")
-        self.fake_A_ = self.generator(self.fake_B, self.options, False, name="generatorB2A", a2b=False)
-        self.fake_A = self.generator(self.real_B, self.options, True, name="generatorB2A", a2b=False)
-        self.fake_B_ = self.generator(self.fake_A, self.options, True, name="generatorA2B")
+        self.fake_B, self.real_A_encoder = self.generator(self.real_A, self.options, False, name="generatorA2B")
+        self.fake_A_, _ = self.generator(self.fake_B, self.options, False, name="generatorB2A", a2b=False)
+        self.fake_A, _ = self.generator(self.real_B, self.options, True, name="generatorB2A", a2b=False)
+        self.fake_B_, self.fake_A_encoder = self.generator(self.fake_A, self.options, True, name="generatorA2B")
 
         self.DB_fake = self.discriminator(self.fake_B, self.options, reuse=False, name="discriminatorB")
         self.DA_fake = self.discriminator(self.fake_A, self.options, reuse=False, name="discriminatorA")
+
+        pad_shape = [self.batch_size, self.image_size, self.image_size, 2]
+        print("pad_shape", pad_shape)
+        self.channel_pad = tf.constant(0.99, dtype=tf.float32, shape=pad_shape)
+
+        _, self.fake_B_encoder = self.generator(tf.concat([self.fake_B, self.channel_pad], axis=-1),
+                                                self.options, True, name="generatorA2B")
+        _, self.fake_B_encoder_ = self.generator(tf.concat([self.fake_B_, self.channel_pad], axis=-1),
+                                                 self.options, True, name="generatorA2B")
+
         self.g_loss_a2b = self.criterionGAN(self.DB_fake, tf.ones_like(self.DB_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_)
         self.g_loss_b2a = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_)
+        self.g_save_info_loss = mae_criterion(self.real_A_encoder, self.fake_B_encoder) \
+            + mae_criterion(self.fake_A_encoder, self.fake_B_encoder_)
         self.g_loss = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.criterionGAN(self.DB_fake, tf.ones_like(self.DB_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
-            + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_)
+            + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
+            + self.L1_lambda * self.g_save_info_loss
 
         self.fake_A_sample = tf.placeholder(tf.float32,
                                             [None, self.image_size, self.image_size,
@@ -90,8 +103,10 @@ class cyclegan(object):
 
         self.g_loss_a2b_sum = tf.summary.scalar("g_loss_a2b", self.g_loss_a2b)
         self.g_loss_b2a_sum = tf.summary.scalar("g_loss_b2a", self.g_loss_b2a)
+        self.g_save_info_loss_sum = tf.summary.scalar("g_save_info_loss", self.g_save_info_loss)
         self.g_loss_sum = tf.summary.scalar("g_loss", self.g_loss)
-        self.g_sum = tf.summary.merge([self.g_loss_a2b_sum, self.g_loss_b2a_sum, self.g_loss_sum])
+        self.g_sum = tf.summary.merge([self.g_loss_a2b_sum, self.g_loss_b2a_sum, self.g_loss_sum,
+                                       self.g_save_info_loss_sum])
         self.db_loss_sum = tf.summary.scalar("db_loss", self.db_loss)
         self.da_loss_sum = tf.summary.scalar("da_loss", self.da_loss)
         self.d_loss_sum = tf.summary.scalar("d_loss", self.d_loss)
@@ -111,27 +126,33 @@ class cyclegan(object):
         self.test_B = tf.placeholder(tf.float32,
                                      [None, self.image_size, self.image_size,
                                       self.output_c_dim], name='test_B')
-        self.testB = self.generator(self.test_A, self.options, True, name="generatorA2B")
-        self.testA = self.generator(self.test_B, self.options, True, name="generatorB2A", a2b=False)
+        self.testB, _ = self.generator(self.test_A, self.options, True, name="generatorA2B")
+        self.testA, _ = self.generator(self.test_B, self.options, True, name="generatorB2A", a2b=False)
 
         t_vars = tf.trainable_variables()
         self.d_vars = [var for var in t_vars if 'discriminator' in var.name]
-        self.g_vars = [var for var in t_vars if 'generator' in var.name]
-        for var in t_vars: print(var.name)
+        self.encoder_vars = [var for var in t_vars if 'encoder' in var.name]
+        self.decoder_vars = [var for var in t_vars if 'decoder' in var.name]
+        # for var in t_vars: print(var.name)
+        print("Encoder Var", self.encoder_vars)
+        print("Decoder Var", self.decoder_vars)
 
     def train(self, args):
         """Train cyclegan"""
         self.lr = tf.placeholder(tf.float32, None, name='learning_rate')
         self.d_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
             .minimize(self.d_loss, var_list=self.d_vars)
-        self.g_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
-            .minimize(self.g_loss, var_list=self.g_vars)
+        self.encoder_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
+            .minimize(self.g_loss, var_list=self.encoder_vars)
+        self.decoder_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
+            .minimize(self.g_loss, var_list=self.decoder_vars)
 
         init_op = tf.global_variables_initializer()
         self.sess.run(init_op)
         self.writer = tf.summary.FileWriter("./logs", self.sess.graph)
 
         counter = 1
+        encoder_freezed = False
         start_time = time.time()
 
         if args.continue_train:
@@ -167,9 +188,20 @@ class cyclegan(object):
                 batch_images = np.array(batch_images).astype(np.float32)
 
                 # Update G network and record fake outputs
-                fake_A, fake_B, _, summary_str = self.sess.run(
-                    [self.fake_A, self.fake_B, self.g_optim, self.g_sum],
-                    feed_dict={self.real_data: batch_images, self.lr: lr})
+                if epoch < args.encoder_freeze_epoch:
+                    fake_A, fake_B, _, _, summary_str, info_loss, gloss = self.sess.run(
+                        [self.fake_A, self.fake_B, self.encoder_optim, self.decoder_optim,
+                         self.g_sum, self.g_save_info_loss, self.g_loss],
+                        feed_dict={self.real_data: batch_images, self.lr: lr})
+                else:
+                    if not encoder_freezed:
+                        print("[INFO] encoder freezed !!")
+                    encoder_freezed = True
+                    fake_A, fake_B, _, summary_str, info_loss, gloss = self.sess.run(
+                        [self.fake_A, self.fake_B, self.decoder_optim,
+                         self.g_sum, self.g_save_info_loss, self.g_loss],
+                        feed_dict={self.real_data: batch_images, self.lr: lr})
+
                 self.writer.add_summary(summary_str, counter)
                 [fake_A, fake_B] = self.pool([fake_A, fake_B])
 
@@ -183,8 +215,8 @@ class cyclegan(object):
                 self.writer.add_summary(summary_str, counter)
 
                 counter += 1
-                print(("Epoch: [%2d] [%4d/%4d] time: %4.4f" % (
-                    epoch, idx, batch_idxs, time.time() - start_time)))
+                print(("Epoch: [%2d] [%4d/%4d] | info_loss: %f | gloss: %f |time: %4.4f" % (
+                    epoch,  idx, batch_idxs, info_loss, gloss, time.time() - start_time)))
 
                 if np.mod(counter, args.print_freq) == 1:
                     self.sample_model(args.sample_dir, epoch, idx)
