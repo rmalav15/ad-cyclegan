@@ -4,6 +4,6 @@ CUDA_VISIBLE_DEVICES=0 python main.py \
     --input_nc 5 \
     --batch_size 4 \
     --epoch 400 \
-    --encoder_freeze_epoch 150 \
+    --encoder_freeze_epoch 10 \
     --ngf 64 \
     --lr 0.0001

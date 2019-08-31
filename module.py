@@ -103,8 +103,8 @@ def generator_unet(image, options, reuse=False, name="generator", a2b=True):
             # d6 is (64 x 64 x self.gf_dim*2*2)
 
             d7 = deconv2d(tf.nn.relu(d6), options.gf_dim, name='g_d7')
-            d7 = instance_norm(d7, 'g_bn_d7')
-            # d7 = tf.concat([instance_norm(d7, 'g_bn_d7'), e1], 3)
+            # d7 = instance_norm(d7, 'g_bn_d7')
+            d7 = tf.concat([instance_norm(d7, 'g_bn_d7'), e1], 3)
             # d7 is (128 x 128 x self.gf_dim*1)
 
             if a2b:

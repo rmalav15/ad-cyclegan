@@ -74,13 +74,13 @@ class cyclegan(object):
         self.g_loss_b2a = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_)
-        self.g_save_info_loss = mae_criterion(self.real_A_encoder, self.fake_B_encoder) \
-            + mae_criterion(self.fake_A_encoder, self.fake_B_encoder_)
+        self.g_save_info_loss = mae_criterion(self.real_A_encoder, self.fake_B_encoder)
+        # + mae_criterion(self.fake_A_encoder, self.fake_B_encoder_)
         self.g_loss = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.criterionGAN(self.DB_fake, tf.ones_like(self.DB_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
-            + self.L1_lambda * self.g_save_info_loss
+            + self.L1_lambda * 4 * self.g_save_info_loss
 
         self.fake_A_sample = tf.placeholder(tf.float32,
                                             [None, self.image_size, self.image_size,
