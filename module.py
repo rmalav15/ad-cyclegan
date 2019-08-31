@@ -67,14 +67,10 @@ def generator_unet(image, options, reuse=False, name="generator", a2b=True):
             e7 = instance_norm(conv2d(lrelu(e6), options.gf_dim * 8, name='g_e7_conv'), 'g_bn_e7')
             # e7 is (2 x 2 x self.gf_dim*8)
             e8 = conv2d(lrelu(e7), options.gf_dim*8, ks=2, s=2, name='g_e8_conv')
-            # print_op = [tf.print("e7", e7),
-            #             tf.print("e8", e8)]
-            # with tf.control_dependencies(print_op):
-            e8_noise = concat_gaussian_noise(e8, stdv=options.noise_stdv)
             # e8 is (2 x 2 x self.gf_dim*8)
 
         with tf.variable_scope("decoder"):
-            d1 = deconv2d(tf.nn.relu(e8_noise), options.gf_dim * 8, name='g_d1')
+            d1 = deconv2d(tf.nn.relu(e8), options.gf_dim * 8, name='g_d1')
             d1 = tf.nn.dropout(d1, dropout_rate)
             d1 = tf.concat([instance_norm(d1, 'g_bn_d1'), e7], 3)
             # d1 is (2 x 2 x self.gf_dim*8*2)
